@@ -2,6 +2,7 @@ package openapi3
 
 import (
 	"context"
+	"net/url"
 	"path"
 	"strings"
 )
@@ -125,12 +126,24 @@ func cutDirectories(p, dirs string) (string, bool) {
 	return p, false
 }
 
-func isExternalRef(ref string, parentIsExternal bool) bool {
-	return ref != "" && (!strings.HasPrefix(ref, "#/components/") || parentIsExternal)
+func isExternalRef(ref string, refPath *url.URL, docURL *url.URL, parentIsExternal bool) bool {
+	if ref == "" {
+		return false
+	}
+	if !strings.HasPrefix(ref, "#/components/") || parentIsExternal {
+		return true
+	}
+
+	// A #/components/ ref is still external if it resolves to a different file
+	if refPath != nil && docURL != nil && refPath.Path != docURL.Path {
+		return true
+	}
+
+	return false
 }
 
 func (doc *T) addSchemaToSpec(s *SchemaRef, refNameResolver RefNameResolver, parentIsExternal bool) bool {
-	if s == nil || !isExternalRef(s.Ref, parentIsExternal) {
+	if s == nil || !isExternalRef(s.Ref, s.refPath, doc.url, parentIsExternal) {
 		return false
 	}
 
@@ -154,7 +167,7 @@ func (doc *T) addSchemaToSpec(s *SchemaRef, refNameResolver RefNameResolver, par
 }
 
 func (doc *T) addParameterToSpec(p *ParameterRef, refNameResolver RefNameResolver, parentIsExternal bool) bool {
-	if p == nil || !isExternalRef(p.Ref, parentIsExternal) {
+	if p == nil || !isExternalRef(p.Ref, p.refPath, doc.url, parentIsExternal) {
 		return false
 	}
 	name := refNameResolver(doc, p)
@@ -177,7 +190,7 @@ func (doc *T) addParameterToSpec(p *ParameterRef, refNameResolver RefNameResolve
 }
 
 func (doc *T) addHeaderToSpec(h *HeaderRef, refNameResolver RefNameResolver, parentIsExternal bool) bool {
-	if h == nil || !isExternalRef(h.Ref, parentIsExternal) {
+	if h == nil || !isExternalRef(h.Ref, h.refPath, doc.url, parentIsExternal) {
 		return false
 	}
 	name := refNameResolver(doc, h)
@@ -200,7 +213,7 @@ func (doc *T) addHeaderToSpec(h *HeaderRef, refNameResolver RefNameResolver, par
 }
 
 func (doc *T) addRequestBodyToSpec(r *RequestBodyRef, refNameResolver RefNameResolver, parentIsExternal bool) bool {
-	if r == nil || !isExternalRef(r.Ref, parentIsExternal) {
+	if r == nil || !isExternalRef(r.Ref, r.refPath, doc.url, parentIsExternal) {
 		return false
 	}
 	name := refNameResolver(doc, r)
@@ -223,7 +236,7 @@ func (doc *T) addRequestBodyToSpec(r *RequestBodyRef, refNameResolver RefNameRes
 }
 
 func (doc *T) addResponseToSpec(r *ResponseRef, refNameResolver RefNameResolver, parentIsExternal bool) bool {
-	if r == nil || !isExternalRef(r.Ref, parentIsExternal) {
+	if r == nil || !isExternalRef(r.Ref, r.refPath, doc.url, parentIsExternal) {
 		return false
 	}
 	name := refNameResolver(doc, r)
@@ -246,7 +259,7 @@ func (doc *T) addResponseToSpec(r *ResponseRef, refNameResolver RefNameResolver,
 }
 
 func (doc *T) addSecuritySchemeToSpec(ss *SecuritySchemeRef, refNameResolver RefNameResolver, parentIsExternal bool) {
-	if ss == nil || !isExternalRef(ss.Ref, parentIsExternal) {
+	if ss == nil || !isExternalRef(ss.Ref, ss.refPath, doc.url, parentIsExternal) {
 		return
 	}
 	name := refNameResolver(doc, ss)
@@ -269,7 +282,7 @@ func (doc *T) addSecuritySchemeToSpec(ss *SecuritySchemeRef, refNameResolver Ref
 }
 
 func (doc *T) addExampleToSpec(e *ExampleRef, refNameResolver RefNameResolver, parentIsExternal bool) {
-	if e == nil || !isExternalRef(e.Ref, parentIsExternal) {
+	if e == nil || !isExternalRef(e.Ref, e.refPath, doc.url, parentIsExternal) {
 		return
 	}
 	name := refNameResolver(doc, e)
@@ -292,7 +305,7 @@ func (doc *T) addExampleToSpec(e *ExampleRef, refNameResolver RefNameResolver, p
 }
 
 func (doc *T) addLinkToSpec(l *LinkRef, refNameResolver RefNameResolver, parentIsExternal bool) {
-	if l == nil || !isExternalRef(l.Ref, parentIsExternal) {
+	if l == nil || !isExternalRef(l.Ref, l.refPath, doc.url, parentIsExternal) {
 		return
 	}
 	name := refNameResolver(doc, l)
@@ -315,7 +328,7 @@ func (doc *T) addLinkToSpec(l *LinkRef, refNameResolver RefNameResolver, parentI
 }
 
 func (doc *T) addCallbackToSpec(c *CallbackRef, refNameResolver RefNameResolver, parentIsExternal bool) bool {
-	if c == nil || !isExternalRef(c.Ref, parentIsExternal) {
+	if c == nil || !isExternalRef(c.Ref, c.refPath, doc.url, parentIsExternal) {
 		return false
 	}
 	name := refNameResolver(doc, c)
@@ -446,7 +459,7 @@ func (doc *T) derefRequestBody(r RequestBody, refNameResolver RefNameResolver, p
 func (doc *T) derefPaths(paths map[string]*PathItem, refNameResolver RefNameResolver, parentIsExternal bool) {
 	for _, name := range componentNames(paths) {
 		ops := paths[name]
-		pathIsExternal := isExternalRef(ops.Ref, parentIsExternal)
+		pathIsExternal := isExternalRef(ops.Ref, nil, doc.url, parentIsExternal)
 		// inline full operations
 		ops.Ref = ""
 
